@@ -70,22 +70,30 @@ import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
 
 /**
- * Tool for examining/filtering/dumping the contents of SHP files.
+ * Tool for syncing between two tables in separate databases.
  * 
  * @author Peter Ansell p_ansell@yahoo.com
  */
-public class PostgresSearch {
+public class PostgresSync {
 
 	public static void main(String... args) throws Exception {
 		final OptionParser parser = new OptionParser();
 
 		final OptionSpec<Void> help = parser.accepts("help").forHelp();
-		final OptionSpec<String> jdbcOption = parser.accepts("jdbc").withRequiredArg().ofType(String.class).required()
-				.describedAs("The JDBC connection string");
-		final OptionSpec<String> usernameOption = parser.accepts("username").withRequiredArg().ofType(String.class).required()
-				.describedAs("The JDBC username");
-		final OptionSpec<String> passwordOption = parser.accepts("password").withRequiredArg().ofType(String.class).required()
-				.describedAs("The JDBC password");
+
+		final OptionSpec<String> sourceJDBCOption = parser.accepts("source-jdbc").withRequiredArg().ofType(String.class)
+				.required().describedAs("The JDBC connection string for the source database");
+		final OptionSpec<String> sourceUsernameOption = parser.accepts("source-username").withRequiredArg()
+				.ofType(String.class).required().describedAs("The JDBC username for the source database");
+		final OptionSpec<String> sourcePasswordOption = parser.accepts("source-password").withRequiredArg()
+				.ofType(String.class).required().describedAs("The JDBC password for the source database");
+
+		final OptionSpec<String> destJDBCOption = parser.accepts("dest-jdbc").withRequiredArg().ofType(String.class)
+				.required().describedAs("The JDBC connection string for the destination database");
+		final OptionSpec<String> destUsernameOption = parser.accepts("dest-username").withRequiredArg()
+				.ofType(String.class).required().describedAs("The JDBC username for the destination database");
+		final OptionSpec<String> destPasswordOption = parser.accepts("dest-password").withRequiredArg()
+				.ofType(String.class).required().describedAs("The JDBC password for the destination database");
 
 		OptionSet options = null;
 
@@ -102,11 +110,17 @@ public class PostgresSearch {
 			return;
 		}
 
-		String jdbcurl = jdbcOption.value(options);
-		String username = usernameOption.value(options);
-		String password = passwordOption.value(options);
-		try(Connection conn = DriverManager.getConnection(jdbcurl , username, password);) {
-			
+		String sourceJDBCUrl = sourceJDBCOption.value(options);
+		String sourceUsername = sourceUsernameOption.value(options);
+		String sourcePassword = sourcePasswordOption.value(options);
+
+		String destJDBCUrl = destJDBCOption.value(options);
+		String destUsername = destUsernameOption.value(options);
+		String destPassword = destPasswordOption.value(options);
+
+		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
+				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);) {
+
 		}
 	}
 }

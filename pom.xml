@@ -204,8 +204,8 @@
 				<configuration>
 					<programs>
 						<program>
-							<mainClass>com.github.ansell.postgres.PostgresSearch</mainClass>
-							<id>pgsearch</id>
+							<mainClass>com.github.ansell.postgres.PostgresSync</mainClass>
+							<id>pgsync</id>
 							<jvmSettings>
 								<initialMemorySize>32m</initialMemorySize>
 								<maxMemorySize>4g</maxMemorySize>

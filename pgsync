@@ -1,8 +1,8 @@
 #!/bin/bash
-# This script runs the Postgres Search code.
+# This script runs the Postgres Sync code.
 # Before running this script for the first time 
 # you may need to run:
-#     chmod +x pgsearch
+#     chmod +x pgsync
 #
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -12,4 +12,4 @@ if [ ! -d "${DIR}/target/appassembler/bin" ]; then
 fi
 
 chmod u+x `ls ${DIR}/target/appassembler/bin/*`
-$DIR/target/appassembler/bin/pgsearch "$@"
+$DIR/target/appassembler/bin/pgsync "$@"
