@@ -16,53 +16,14 @@
  */
 package com.github.ansell.postgres;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.OutputStream;
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.util.stream.IntStream;
 
-import org.apache.commons.io.output.NullWriter;
-import org.geotools.data.FileDataStore;
-import org.geotools.data.FileDataStoreFinder;
-import org.geotools.data.collection.CollectionFeatureSource;
-import org.geotools.data.collection.ListFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.data.simple.SimpleFeatureSource;
-import org.geotools.feature.NameImpl;
-import org.geotools.map.FeatureLayer;
-import org.geotools.map.Layer;
-import org.geotools.map.MapContent;
-import org.geotools.styling.SLD;
-import org.geotools.styling.Style;
 import org.jooq.lambda.Unchecked;
-import org.opengis.feature.simple.SimpleFeature;
-import org.opengis.feature.simple.SimpleFeatureType;
-import org.opengis.feature.type.AttributeDescriptor;
-import org.opengis.feature.type.Name;
-import com.fasterxml.jackson.databind.SequenceWriter;
-import com.fasterxml.jackson.dataformat.csv.CsvSchema;
-import com.github.ansell.csv.stream.CSVStream;
-import com.github.ansell.csv.sum.CSVSummariser;
-import com.github.ansell.csv.util.CSVUtil;
 
 import joptsimple.OptionException;
 import joptsimple.OptionParser;
@@ -87,6 +48,8 @@ public class PostgresSync {
 				.ofType(String.class).required().describedAs("The JDBC username for the source database");
 		final OptionSpec<String> sourcePasswordOption = parser.accepts("source-password").withRequiredArg()
 				.ofType(String.class).required().describedAs("The JDBC password for the source database");
+		final OptionSpec<String> sourceQueryOption = parser.accepts("source-query").withRequiredArg()
+				.ofType(String.class).required().describedAs("The source query");
 
 		final OptionSpec<String> destJDBCOption = parser.accepts("dest-jdbc").withRequiredArg().ofType(String.class)
 				.required().describedAs("The JDBC connection string for the destination database");
@@ -94,6 +57,8 @@ public class PostgresSync {
 				.ofType(String.class).required().describedAs("The JDBC username for the destination database");
 		final OptionSpec<String> destPasswordOption = parser.accepts("dest-password").withRequiredArg()
 				.ofType(String.class).required().describedAs("The JDBC password for the destination database");
+		final OptionSpec<String> destQueryOption = parser.accepts("dest-query").withRequiredArg().ofType(String.class)
+				.required().describedAs("The query on the destination");
 
 		OptionSet options = null;
 
@@ -113,14 +78,32 @@ public class PostgresSync {
 		String sourceJDBCUrl = sourceJDBCOption.value(options);
 		String sourceUsername = sourceUsernameOption.value(options);
 		String sourcePassword = sourcePasswordOption.value(options);
+		String sourceQuery = sourceQueryOption.value(options);
 
 		String destJDBCUrl = destJDBCOption.value(options);
 		String destUsername = destUsernameOption.value(options);
 		String destPassword = destPasswordOption.value(options);
+		String destQuery = destQueryOption.value(options);
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
-				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);) {
+				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);
+				PreparedStatement sourceStatement = sourceConn.prepareStatement(sourceQuery);
+				PreparedStatement destStatement = destConn.prepareStatement(destQuery);
+				ResultSet sourceResults = sourceStatement.executeQuery();
+				ResultSet destResults = destStatement.executeQuery();) {
+			ResultSetMetaData sourceMetadata = sourceResults.getMetaData();
+			int sourceColumns = sourceMetadata.getColumnCount();
+			while (sourceResults.next()) {
+				IntStream.range(1, sourceColumns)
+						.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(sourceResults.getString(i))));
+			}
 
+			ResultSetMetaData destMetadata = destResults.getMetaData();
+			int destColumns = destMetadata.getColumnCount();
+			while (destResults.next()) {
+				IntStream.range(1, destColumns)
+						.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(destResults.getString(i))));
+			}
 		}
 	}
 }
