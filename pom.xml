@@ -3,11 +3,11 @@
 
 	<modelVersion>4.0.0</modelVersion>
 
-        <parent>
-                <groupId>com.github.ansell</groupId>
-                <artifactId>parentpom</artifactId>
-                <version>6</version>
-        </parent>
+	<parent>
+		<groupId>com.github.ansell</groupId>
+		<artifactId>parentpom</artifactId>
+		<version>6</version>
+	</parent>
 
 	<groupId>com.github.ansell.postgres</groupId>
 	<artifactId>pg-debug</artifactId>
@@ -38,7 +38,7 @@
 	<properties>
 		<geotools.version>18.2</geotools.version>
 		<slf4j.version>1.7.25</slf4j.version>
-                <junit.version>4.12</junit.version>
+		<junit.version>4.12</junit.version>
 	</properties>
 
 	<dependencies>
@@ -74,31 +74,31 @@
 			<groupId>net.sf.jopt-simple</groupId>
 			<artifactId>jopt-simple</artifactId>
 		</dependency>
-                <dependency>
-                        <groupId>org.junit.jupiter</groupId>
-                        <artifactId>junit-jupiter-api</artifactId>
-                        <scope>test</scope>
-                </dependency>
-                <dependency>
-                        <groupId>org.junit.jupiter</groupId>
-                        <artifactId>junit-jupiter-engine</artifactId>
-                        <scope>test</scope>
-                </dependency>
-                <dependency>
-                        <groupId>org.junit.platform</groupId>
-                        <artifactId>junit-platform-launcher</artifactId>
-                        <scope>test</scope>
-                </dependency>
-                <dependency>
-                        <groupId>org.junit.vintage</groupId>
-                        <artifactId>junit-vintage-engine</artifactId>
-                        <scope>test</scope>
-                </dependency>
-                <dependency>
-                        <groupId>org.junit.jupiter</groupId>
-                        <artifactId>junit-jupiter-migrationsupport</artifactId>
-                        <scope>test</scope>
-                </dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-engine</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-launcher</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.vintage</groupId>
+			<artifactId>junit-vintage-engine</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-migrationsupport</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
@@ -146,11 +146,11 @@
 				<artifactId>shp-debug</artifactId>
 				<version>0.0.8-SNAPSHOT</version>
 			</dependency>
-                        <dependency>
-                                <groupId>org.postgresql</groupId>
-                                <artifactId>postgresql</artifactId>
-                                <version>42.2.1</version>
-                        </dependency>
+			<dependency>
+				<groupId>org.postgresql</groupId>
+				<artifactId>postgresql</artifactId>
+				<version>42.2.1</version>
+			</dependency>
 			<dependency>
 				<groupId>net.sf.jopt-simple</groupId>
 				<artifactId>jopt-simple</artifactId>
