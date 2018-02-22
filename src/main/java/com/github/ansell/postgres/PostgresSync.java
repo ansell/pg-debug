@@ -93,6 +93,7 @@ public class PostgresSync {
 			while (sourceResults.next()) {
 				IntStream.range(1, sourceColumns + 1).forEachOrdered(Unchecked.intConsumer(
 						i -> System.out.println(sourceMetadata.getColumnName(i) + "=" + sourceResults.getString(i))));
+				System.out.println();
 			}
 		}
 	}
