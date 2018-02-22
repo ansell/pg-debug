@@ -52,13 +52,13 @@ public class PostgresSync {
 				.ofType(String.class).required().describedAs("The source query");
 
 		final OptionSpec<String> destJDBCOption = parser.accepts("dest-jdbc").withRequiredArg().ofType(String.class)
-				.required().describedAs("The JDBC connection string for the destination database");
+				.describedAs("The JDBC connection string for the destination database");
 		final OptionSpec<String> destUsernameOption = parser.accepts("dest-username").withRequiredArg()
-				.ofType(String.class).required().describedAs("The JDBC username for the destination database");
+				.ofType(String.class).describedAs("The JDBC username for the destination database");
 		final OptionSpec<String> destPasswordOption = parser.accepts("dest-password").withRequiredArg()
-				.ofType(String.class).required().describedAs("The JDBC password for the destination database");
+				.ofType(String.class).describedAs("The JDBC password for the destination database");
 		final OptionSpec<String> destQueryOption = parser.accepts("dest-query").withRequiredArg().ofType(String.class)
-				.required().describedAs("The query on the destination");
+				.describedAs("The query on the destination");
 
 		OptionSet options = null;
 
@@ -86,23 +86,13 @@ public class PostgresSync {
 		String destQuery = destQueryOption.value(options);
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
-				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);
 				PreparedStatement sourceStatement = sourceConn.prepareStatement(sourceQuery);
-				PreparedStatement destStatement = destConn.prepareStatement(destQuery);
-				ResultSet sourceResults = sourceStatement.executeQuery();
-				ResultSet destResults = destStatement.executeQuery();) {
+				ResultSet sourceResults = sourceStatement.executeQuery();) {
 			ResultSetMetaData sourceMetadata = sourceResults.getMetaData();
 			int sourceColumns = sourceMetadata.getColumnCount();
 			while (sourceResults.next()) {
-				IntStream.range(1, sourceColumns)
-						.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(sourceResults.getString(i))));
-			}
-
-			ResultSetMetaData destMetadata = destResults.getMetaData();
-			int destColumns = destMetadata.getColumnCount();
-			while (destResults.next()) {
-				IntStream.range(1, destColumns)
-						.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(destResults.getString(i))));
+				IntStream.range(1, sourceColumns + 1).forEachOrdered(Unchecked.intConsumer(
+						i -> System.out.println(sourceMetadata.getColumnName(i) + "=" + sourceResults.getString(i))));
 			}
 		}
 	}
