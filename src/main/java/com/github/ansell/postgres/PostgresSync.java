@@ -113,40 +113,50 @@ public class PostgresSync {
 	}
 
 	/**
+	 * Executes a query to get the maximum value.
+	 * 
 	 * @param nextJDBCUrl
+	 *            The JDBC connection string
 	 * @param nextUsername
+	 *            The username to use
 	 * @param nextPassword
+	 *            The password to use
 	 * @param maxQuery
+	 *            The query to get the maximum value needed to determine whether
+	 *            syncing is required and if so where to start and end from.
 	 * @param debug
+	 *            True to emit debugging information and false otherwise
 	 * @return The maximum id as an integer
 	 * @throws SQLException
+	 *             If there is a SQL error
 	 * @throws RuntimeException
+	 *             If there is an unknown error
 	 * @throws NumberFormatException
+	 *             If there is an error converting the maximum id to an integer
 	 */
 	public static int executeMaxQuery(String nextJDBCUrl, String nextUsername, String nextPassword, String maxQuery,
 			boolean debug) throws SQLException, RuntimeException, NumberFormatException {
-		int sourceMaxId = -1;
-		try (Connection sourceConn = DriverManager.getConnection(nextJDBCUrl, nextUsername, nextPassword);
-				PreparedStatement sourceMaxStatement = sourceConn.prepareStatement(maxQuery);
-				ResultSet sourceMaxResults = sourceMaxStatement.executeQuery();) {
-			ResultSetMetaData sourceMaxMetadata = sourceMaxResults.getMetaData();
-			int sourceMaxColumns = sourceMaxMetadata.getColumnCount();
-			if (sourceMaxColumns != 1) {
-				throw new RuntimeException("The source max query did not return a single column");
+		int result = -1;
+		try (Connection nextConn = DriverManager.getConnection(nextJDBCUrl, nextUsername, nextPassword);
+				PreparedStatement nextMaxStatement = nextConn.prepareStatement(maxQuery);
+				ResultSet maxResults = nextMaxStatement.executeQuery();) {
+			ResultSetMetaData maxMetadata = maxResults.getMetaData();
+			int maxColumns = maxMetadata.getColumnCount();
+			if (maxColumns != 1) {
+				throw new RuntimeException("The max query did not return a single column");
 			}
-			while (sourceMaxResults.next()) {
+			while (maxResults.next()) {
 				if (debug) {
-					IntStream.range(1, sourceMaxColumns + 1)
-							.forEachOrdered(Unchecked.intConsumer(i -> System.out
-									.println(sourceMaxMetadata.getColumnName(i) + "=" + sourceMaxResults.getString(i)
-											+ " as " + sourceMaxMetadata.getColumnTypeName(i))));
+					IntStream.range(1, maxColumns + 1)
+							.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(maxMetadata.getColumnName(i)
+									+ "=" + maxResults.getString(i) + " as " + maxMetadata.getColumnTypeName(i))));
 					System.out.println();
 				}
 
-				sourceMaxId = Integer.parseInt(sourceMaxResults.getString(1));
-				System.out.println("Source max id = " + sourceMaxId);
+				result = Integer.parseInt(maxResults.getString(1));
+				System.out.println("Source max id = " + result);
 			}
 		}
-		return sourceMaxId;
+		return result;
 	}
 }
