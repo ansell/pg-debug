@@ -72,6 +72,8 @@ public class PostgresSync {
 		final OptionSpec<String> destInsertQueryOption = parser.accepts("dest-insert-query").withRequiredArg()
 				.ofType(String.class).describedAs(
 						"The query on the destination to insert new values. Must accept the same number of parameters as were found in the rows from the source and in the same order.");
+		final OptionSpec<String> destAutoIncrementQueryOption = parser.accepts("dest-insert-query").withRequiredArg()
+				.ofType(String.class).describedAs("The query on the destination to update the auto-increment counter.");
 
 		OptionSet options = null;
 
@@ -101,14 +103,20 @@ public class PostgresSync {
 		String destPassword = destPasswordOption.value(options);
 		String destMaxQuery = destMaxQueryOption.value(options);
 		String destInsertQuery = destInsertQueryOption.value(options);
+		String destAutoIncrementQuery = destAutoIncrementQueryOption.value(options);
 
-		int sourceMaxId = executeMaxQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceMaxQuery, debug);
+		int sourceMaxId = executeMaxQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceMaxQuery, debug,
+				"source");
 		if (sourceMaxId < 0) {
 			throw new RuntimeException("Failed to find source max id using query: " + sourceMaxId);
 		}
-		int destMaxId = executeMaxQuery(destJDBCUrl, destUsername, destPassword, destMaxQuery, debug);
+		int destMaxId = executeMaxQuery(destJDBCUrl, destUsername, destPassword, destMaxQuery, debug, "dest");
 		if (destMaxId < 0) {
 			throw new RuntimeException("Failed to find dest max id using query: " + destMaxId);
+		}
+
+		if (destMaxId >= sourceMaxId) {
+			System.out.println("Auto-increment value on destination does not need updating");
 		}
 	}
 
@@ -126,6 +134,8 @@ public class PostgresSync {
 	 *            syncing is required and if so where to start and end from.
 	 * @param debug
 	 *            True to emit debugging information and false otherwise
+	 * @param targetName
+	 *            The name to use in debugging for this target
 	 * @return The maximum id as an integer
 	 * @throws SQLException
 	 *             If there is a SQL error
@@ -135,7 +145,7 @@ public class PostgresSync {
 	 *             If there is an error converting the maximum id to an integer
 	 */
 	public static int executeMaxQuery(String nextJDBCUrl, String nextUsername, String nextPassword, String maxQuery,
-			boolean debug) throws SQLException, RuntimeException, NumberFormatException {
+			boolean debug, String targetName) throws SQLException, RuntimeException, NumberFormatException {
 		int result = -1;
 		try (Connection nextConn = DriverManager.getConnection(nextJDBCUrl, nextUsername, nextPassword);
 				PreparedStatement nextMaxStatement = nextConn.prepareStatement(maxQuery);
@@ -143,7 +153,7 @@ public class PostgresSync {
 			ResultSetMetaData maxMetadata = maxResults.getMetaData();
 			int maxColumns = maxMetadata.getColumnCount();
 			if (maxColumns != 1) {
-				throw new RuntimeException("The max query did not return a single column");
+				throw new RuntimeException("The max query (" + targetName + ") did not return a single column");
 			}
 			while (maxResults.next()) {
 				if (debug) {
@@ -154,7 +164,7 @@ public class PostgresSync {
 				}
 
 				result = Integer.parseInt(maxResults.getString(1));
-				System.out.println("Source max id = " + result);
+				System.out.println("Max id (" + targetName + ") = " + result);
 			}
 		}
 		return result;
