@@ -16,6 +16,7 @@
  */
 package com.github.ansell.postgres;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -25,6 +26,9 @@ import java.sql.SQLException;
 import java.util.stream.IntStream;
 
 import org.jooq.lambda.Unchecked;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.github.ansell.csv.stream.util.JSONStreamUtil;
 
 import joptsimple.OptionException;
 import joptsimple.OptionParser;
@@ -45,35 +49,61 @@ public class PostgresSync {
 		final OptionSpec<Boolean> debugOption = parser.accepts("debug").withRequiredArg().ofType(Boolean.class)
 				.defaultsTo(false).describedAs("Set to true to enable debug statements on sysout");
 
-		final OptionSpec<String> sourceJDBCOption = parser.accepts("source-jdbc").withRequiredArg().ofType(String.class)
-				.required().describedAs("The JDBC connection string for the source database");
-		final OptionSpec<String> sourceUsernameOption = parser.accepts("source-username").withRequiredArg()
-				.ofType(String.class).required().describedAs("The JDBC username for the source database");
-		final OptionSpec<String> sourcePasswordOption = parser.accepts("source-password").withRequiredArg()
-				.ofType(String.class).required().describedAs("The JDBC password for the source database");
+		final OptionSpec<File> configFileOption = parser.accepts("config").withRequiredArg().ofType(File.class)
+				.required().describedAs("A JSON file containing the queries of this sync operation");
 
-		final OptionSpec<String> destJDBCOption = parser.accepts("dest-jdbc").withRequiredArg().ofType(String.class)
-				.describedAs("The JDBC connection string for the destination database");
-		final OptionSpec<String> destUsernameOption = parser.accepts("dest-username").withRequiredArg()
-				.ofType(String.class).describedAs("The JDBC username for the destination database");
-		final OptionSpec<String> destPasswordOption = parser.accepts("dest-password").withRequiredArg()
-				.ofType(String.class).describedAs("The JDBC password for the destination database");
+		// final OptionSpec<String> sourceJDBCOption =
+		// parser.accepts("source-jdbc").withRequiredArg().ofType(String.class)
+		// .required().describedAs("The JDBC connection string for the source
+		// database");
+		// final OptionSpec<String> sourceUsernameOption =
+		// parser.accepts("source-username").withRequiredArg()
+		// .ofType(String.class).required().describedAs("The JDBC username for the
+		// source database");
+		// final OptionSpec<String> sourcePasswordOption =
+		// parser.accepts("source-password").withRequiredArg()
+		// .ofType(String.class).required().describedAs("The JDBC password for the
+		// source database");
+		//
+		// final OptionSpec<String> destJDBCOption =
+		// parser.accepts("dest-jdbc").withRequiredArg().ofType(String.class)
+		// .describedAs("The JDBC connection string for the destination database");
+		// final OptionSpec<String> destUsernameOption =
+		// parser.accepts("dest-username").withRequiredArg()
+		// .ofType(String.class).describedAs("The JDBC username for the destination
+		// database");
+		// final OptionSpec<String> destPasswordOption =
+		// parser.accepts("dest-password").withRequiredArg()
+		// .ofType(String.class).describedAs("The JDBC password for the destination
+		// database");
 
-		final OptionSpec<String> sourceMaxQueryOption = parser.accepts("source-max-query").withRequiredArg()
-				.ofType(String.class).required().describedAs(
-						"The query on the source to determine the maximum value. Must return a single result with a single column.");
-		final OptionSpec<String> sourceSelectQueryOption = parser.accepts("source-select-query").withRequiredArg()
-				.ofType(String.class).describedAs(
-						"The query on the source to select rows. Must accept a parameterised value which will be substituted with the max value from the destination to get newer records.");
-
-		final OptionSpec<String> destMaxQueryOption = parser.accepts("dest-max-query").withRequiredArg()
-				.ofType(String.class).describedAs(
-						"The query on the destination to determine the maximum value. Must return a single result with a single column.");
-		final OptionSpec<String> destInsertQueryOption = parser.accepts("dest-insert-query").withRequiredArg()
-				.ofType(String.class).describedAs(
-						"The query on the destination to insert new values. Must accept the same number of parameters as were found in the rows from the source and in the same order.");
-		final OptionSpec<String> destAutoIncrementQueryOption = parser.accepts("dest-insert-query").withRequiredArg()
-				.ofType(String.class).describedAs("The query on the destination to update the auto-increment counter.");
+		// final OptionSpec<String> sourceMaxQueryOption =
+		// parser.accepts("source-max-query").withRequiredArg()
+		// .ofType(String.class).required().describedAs(
+		// "The query on the source to determine the maximum value. Must return a single
+		// result with a single column.");
+		// final OptionSpec<String> sourceSelectQueryOption =
+		// parser.accepts("source-select-query").withRequiredArg()
+		// .ofType(String.class).describedAs(
+		// "The query on the source to select rows. Must accept a parameterised value
+		// which will be substituted with the max value from the destination to get
+		// newer records.");
+		//
+		// final OptionSpec<String> destMaxQueryOption =
+		// parser.accepts("dest-max-query").withRequiredArg()
+		// .ofType(String.class).describedAs(
+		// "The query on the destination to determine the maximum value. Must return a
+		// single result with a single column.");
+		// final OptionSpec<String> destInsertQueryOption =
+		// parser.accepts("dest-insert-query").withRequiredArg()
+		// .ofType(String.class).describedAs(
+		// "The query on the destination to insert new values. Must accept the same
+		// number of parameters as were found in the rows from the source and in the
+		// same order.");
+		// final OptionSpec<String> destAutoIncrementQueryOption =
+		// parser.accepts("dest-insert-query").withRequiredArg()
+		// .ofType(String.class).describedAs("The query on the destination to update the
+		// auto-increment counter.");
 
 		OptionSet options = null;
 
@@ -92,18 +122,31 @@ public class PostgresSync {
 
 		boolean debug = debugOption.value(options);
 
-		String sourceJDBCUrl = sourceJDBCOption.value(options);
-		String sourceUsername = sourceUsernameOption.value(options);
-		String sourcePassword = sourcePasswordOption.value(options);
-		String sourceMaxQuery = sourceMaxQueryOption.value(options);
-		String sourceSelectQuery = sourceSelectQueryOption.value(options);
+		JsonNode config = JSONStreamUtil.loadJSON(configFileOption.value(options).toPath());
 
-		String destJDBCUrl = destJDBCOption.value(options);
-		String destUsername = destUsernameOption.value(options);
-		String destPassword = destPasswordOption.value(options);
-		String destMaxQuery = destMaxQueryOption.value(options);
-		String destInsertQuery = destInsertQueryOption.value(options);
-		String destAutoIncrementQuery = destAutoIncrementQueryOption.value(options);
+		String sourceJDBCUrl = JSONStreamUtil.queryJSONNodeAsText(config, "/source/jdbcUrl");
+		String sourceUsername = JSONStreamUtil.queryJSONNodeAsText(config, "/source/username");
+		String sourcePassword = JSONStreamUtil.queryJSONNodeAsText(config, "/source/password");
+		String sourceMaxQuery = JSONStreamUtil.queryJSONNodeAsText(config, "/source/maxQuery");
+
+		String destJDBCUrl = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/jdbcUrl");
+		String destUsername = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/username");
+		String destPassword = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/password");
+		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/maxQuery");
+
+		// String sourceJDBCUrl = sourceJDBCOption.value(options);
+		// String sourceUsername = sourceUsernameOption.value(options);
+		// String sourcePassword = sourcePasswordOption.value(options);
+		//
+		// String destJDBCUrl = destJDBCOption.value(options);
+		// String destUsername = destUsernameOption.value(options);
+		// String destPassword = destPasswordOption.value(options);
+		//
+		// String sourceMaxQuery = sourceMaxQueryOption.value(options);
+		// String sourceSelectQuery = sourceSelectQueryOption.value(options);
+		// String destMaxQuery = destMaxQueryOption.value(options);
+		// String destInsertQuery = destInsertQueryOption.value(options);
+		// String destAutoIncrementQuery = destAutoIncrementQueryOption.value(options);
 
 		int sourceMaxId = executeMaxQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceMaxQuery, debug,
 				"source");
