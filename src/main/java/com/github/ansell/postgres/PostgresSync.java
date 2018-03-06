@@ -209,7 +209,9 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
 			sourceSelectStatement.setInt(1, destMaxId);
+			System.out.println("Executing select statement: " + sourceSelectStatement.toString());
 			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
+				System.out.println("Statement executed, checking metadata");
 				ResultSetMetaData selectMetadata = selectResults.getMetaData();
 				int selectColumns = selectMetadata.getColumnCount();
 				if (selectColumns < 1) {
@@ -217,6 +219,7 @@ public class PostgresSync {
 				}
 				long startTime = System.currentTimeMillis();
 				int rowCounter = 0;
+				System.out.println("Iterating over results...");
 				while (selectResults.next()) {
 					rowCounter++;
 					System.out.println("Processing row: " + rowCounter);
