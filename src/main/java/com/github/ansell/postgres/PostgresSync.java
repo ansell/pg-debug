@@ -284,13 +284,10 @@ public class PostgresSync {
 						}
 						destInsertStatement.execute();
 					} catch (SQLException e) {
-
-						if (debug) {
-							e.printStackTrace();
-							System.err.println(
-									"Found exception inserting line: " + rowCounter + "... trying update instead");
-						}
-
+						e.printStackTrace();
+						System.err.println(
+								"Found exception inserting line: " + rowCounter + " " + destInsertStatement.toString());
+						throw e;
 						// try {
 						// destUpdateStatement.execute();
 						// } catch (SQLException e1) {
