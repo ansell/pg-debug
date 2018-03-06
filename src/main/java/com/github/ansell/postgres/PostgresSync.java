@@ -210,6 +210,8 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("geometry", org.postgis.PGgeometry.class);
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
+			// TODO: Actually page through by adding LIMIT and OFFSET since Postgres (at
+			// least 8.3/8.4) doesn't seem to understand fetch size parameter
 			try (PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
 					PreparedStatement destInsertStatement = destConn.prepareStatement(destInsertQuery);) {
 
