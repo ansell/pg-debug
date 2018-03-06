@@ -182,62 +182,78 @@ public class PostgresSync {
 					"Need to update auto-increment value on destination from " + destMaxId + " to " + sourceMaxId);
 		}
 
-		executeSync(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, destJDBCUrl, destUsername,
+		executeSync(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, destMaxId, destJDBCUrl, destUsername,
 				destPassword, destInsertQuery, debug, "source");
 	}
 
 	private static void executeSync(String sourceJDBCUrl, String sourceUsername, String sourcePassword,
-			String sourceSelectQuery, String destJDBCUrl, String destUsername, String destPassword,
+			String sourceSelectQuery, int destMaxId, String destJDBCUrl, String destUsername, String destPassword,
 			String destInsertQuery, boolean debug, String targetName) throws SQLException, RuntimeException {
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
 				PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
-				ResultSet selectResults = sourceSelectStatement.executeQuery();
 				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);
 				PreparedStatement destInsertStatement = sourceConn.prepareStatement(destInsertQuery);) {
+			sourceSelectStatement.setInt(0, destMaxId);
+			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
 
-			// Following examples from:
-			// http://postgis.refractions.net:80/documentation/manual-1.4/ch05.html#id2765827
-			((org.postgresql.PGConnection) sourceConn).addDataType("geometry", org.postgis.PGgeometry.class);
-			((org.postgresql.PGConnection) sourceConn).addDataType("box3d", org.postgis.PGbox3d.class);
+				// Following examples from:
+				// http://postgis.refractions.net:80/documentation/manual-1.4/ch05.html#id2765827
+				((org.postgresql.PGConnection) sourceConn).addDataType("geometry", org.postgis.PGgeometry.class);
+				((org.postgresql.PGConnection) sourceConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
-			ResultSetMetaData selectMetadata = selectResults.getMetaData();
-			int selectColumns = selectMetadata.getColumnCount();
-			if (selectColumns < 1) {
-				throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
-			}
-			while (selectResults.next()) {
-				IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
-					String typeName = selectMetadata.getColumnTypeName(i);
-					if ("geometry".equals(typeName)) {
-						PGgeometry geom = (PGgeometry) selectResults.getObject(i);
-						destInsertStatement.setObject(i, geom);
-					} else if ("int4".equals(typeName)) {
-						destInsertStatement.setInt(i, selectResults.getInt(i));
-					} else if ("float8".equals(typeName)) {
-						destInsertStatement.setFloat(i, selectResults.getFloat(i));
-					} else if ("bool".equals(typeName)) {
-						destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
-					} else if ("varchar".equals(typeName)) {
-						String rawString = selectResults.getString(i);
-						if (debug) {
-							String outputString = rawString;
-							if (outputString == null) {
-								outputString = "";
+				ResultSetMetaData selectMetadata = selectResults.getMetaData();
+				int selectColumns = selectMetadata.getColumnCount();
+				if (selectColumns < 1) {
+					throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
+				}
+				long startTime = System.currentTimeMillis();
+				int rowCounter = 0;
+				while (selectResults.next()) {
+					IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
+						String typeName = selectMetadata.getColumnTypeName(i);
+						if ("geometry".equals(typeName)) {
+							PGgeometry geom = (PGgeometry) selectResults.getObject(i);
+							destInsertStatement.setObject(i, geom);
+						} else if ("int4".equals(typeName)) {
+							destInsertStatement.setInt(i, selectResults.getInt(i));
+						} else if ("float8".equals(typeName)) {
+							destInsertStatement.setFloat(i, selectResults.getFloat(i));
+						} else if ("bool".equals(typeName)) {
+							destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
+						} else if ("varchar".equals(typeName)) {
+							String rawString = selectResults.getString(i);
+							if (debug) {
+								String outputString = rawString;
+								if (outputString == null) {
+									outputString = "";
+								}
+								if (outputString.length() > 100) {
+									outputString = outputString.substring(0, 100) + "...";
+								}
+								System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
+										+ selectMetadata.getColumnTypeName(i) + ")");
 							}
-							if (outputString.length() > 100) {
-								outputString = outputString.substring(0, 100) + "...";
-							}
-							System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
-									+ selectMetadata.getColumnTypeName(i) + ")");
+							destInsertStatement.setString(i, rawString);
+						} else {
+							throw new RuntimeException("Unsupported type: " + typeName + " for column "
+									+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
 						}
-						destInsertStatement.setString(i, rawString);
-					} else {
-						throw new RuntimeException("Unsupported type: " + typeName + " for column "
-								+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
+					}));
+					if (debug) {
+						System.out.println();
 					}
-				}));
-				System.out.println();
+					if (rowCounter % 10000 == 0) {
+						double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
+						System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
+								secondsSinceStart, rowCounter / secondsSinceStart);
+					}
+					try {
+						destInsertStatement.execute();
+					} finally {
+						destInsertStatement.clearParameters();
+					}
+				}
 			}
 		}
 	}
