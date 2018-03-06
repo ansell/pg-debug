@@ -201,7 +201,7 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("geometry", org.postgis.PGgeometry.class);
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
-			sourceSelectStatement.setInt(0, destMaxId);
+			sourceSelectStatement.setInt(1, destMaxId);
 			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
 				ResultSetMetaData selectMetadata = selectResults.getMetaData();
 				int selectColumns = selectMetadata.getColumnCount();
