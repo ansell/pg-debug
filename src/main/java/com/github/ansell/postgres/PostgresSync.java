@@ -17,16 +17,19 @@
 package com.github.ansell.postgres;
 
 import java.io.File;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
 import org.jooq.lambda.Unchecked;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.github.ansell.csv.stream.util.JSONStreamUtil;
 
@@ -124,42 +127,88 @@ public class PostgresSync {
 
 		JsonNode config = JSONStreamUtil.loadJSON(configFileOption.value(options).toPath());
 
+		System.out.println(JSONStreamUtil.queryJSONNodeAsText(config, "/label"));
+
 		String sourceJDBCUrl = JSONStreamUtil.queryJSONNodeAsText(config, "/source/jdbcUrl");
 		String sourceUsername = JSONStreamUtil.queryJSONNodeAsText(config, "/source/username");
 		String sourcePassword = JSONStreamUtil.queryJSONNodeAsText(config, "/source/password");
-		String sourceMaxQuery = JSONStreamUtil.queryJSONNodeAsText(config, "/source/maxQuery");
 
 		String destJDBCUrl = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/jdbcUrl");
 		String destUsername = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/username");
 		String destPassword = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/password");
-		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(config, "/destination/maxQuery");
 
-		// String sourceJDBCUrl = sourceJDBCOption.value(options);
-		// String sourceUsername = sourceUsernameOption.value(options);
-		// String sourcePassword = sourcePasswordOption.value(options);
-		//
-		// String destJDBCUrl = destJDBCOption.value(options);
-		// String destUsername = destUsernameOption.value(options);
-		// String destPassword = destPasswordOption.value(options);
-		//
-		// String sourceMaxQuery = sourceMaxQueryOption.value(options);
-		// String sourceSelectQuery = sourceSelectQueryOption.value(options);
-		// String destMaxQuery = destMaxQueryOption.value(options);
-		// String destInsertQuery = destInsertQueryOption.value(options);
-		// String destAutoIncrementQuery = destAutoIncrementQueryOption.value(options);
+		JsonNode queries = JSONStreamUtil.queryJSONNode(config, "/syncQueries");
+
+		executeQueries(sourceJDBCUrl, sourceUsername, sourcePassword, destJDBCUrl, destUsername, destPassword, queries,
+				debug);
+	}
+
+	private static void executeQueries(String sourceJDBCUrl, String sourceUsername, String sourcePassword,
+			String destJDBCUrl, String destUsername, String destPassword, JsonNode queries, boolean debug) {
+		queries.forEach(Unchecked.consumer(nextQuery -> executeQuery(sourceJDBCUrl, sourceUsername, sourcePassword,
+				destJDBCUrl, destUsername, destPassword, nextQuery, debug)));
+	}
+
+	private static void executeQuery(String sourceJDBCUrl, String sourceUsername, String sourcePassword,
+			String destJDBCUrl, String destUsername, String destPassword, JsonNode query, boolean debug)
+			throws JsonProcessingException, IOException, NumberFormatException, SQLException, RuntimeException {
+
+		String label = JSONStreamUtil.queryJSONNodeAsText(query, "/label");
+
+		String sourceMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/maxQuery");
+		String sourceSelectQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/selectQuery");
+		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/maxQuery");
+		String destInsertQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/insertQuery");
+		String destUpdateAutoincrementQuery = JSONStreamUtil.queryJSONNodeAsText(query,
+				"/destination/updateAutoincrementQuery");
 
 		int sourceMaxId = executeMaxQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceMaxQuery, debug,
-				"source");
+				label + " (source)");
 		if (sourceMaxId < 0) {
 			throw new RuntimeException("Failed to find source max id using query: " + sourceMaxId);
 		}
-		int destMaxId = executeMaxQuery(destJDBCUrl, destUsername, destPassword, destMaxQuery, debug, "dest");
+		int destMaxId = executeMaxQuery(destJDBCUrl, destUsername, destPassword, destMaxQuery, debug,
+				label + " (dest)");
 		if (destMaxId < 0) {
 			throw new RuntimeException("Failed to find dest max id using query: " + destMaxId);
 		}
 
 		if (destMaxId >= sourceMaxId) {
 			System.out.println("Auto-increment value on destination does not need updating");
+		} else {
+			System.out.println(
+					"Need to update auto-increment value on destination from " + destMaxId + " to " + sourceMaxId);
+		}
+
+		executeSelectQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, debug, "source");
+	}
+
+	private static void executeSelectQuery(String nextJDBCUrl, String nextUsername, String nextPassword,
+			String nextSelectQuery, boolean debug, String targetName) throws SQLException, RuntimeException {
+
+		try (Connection nextConn = DriverManager.getConnection(nextJDBCUrl, nextUsername, nextPassword);
+				PreparedStatement nextSelectStatement = nextConn.prepareStatement(nextSelectQuery);
+				ResultSet selectResults = nextSelectStatement.executeQuery();) {
+			ResultSetMetaData selectMetadata = selectResults.getMetaData();
+			int selectColumns = selectMetadata.getColumnCount();
+			if (selectColumns < 1) {
+				throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
+			}
+			while (selectResults.next()) {
+				IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
+					String rawString = selectResults.getString(i);
+					String outputString = rawString;
+					if (outputString == null) {
+						outputString = "";
+					}
+					if (outputString.length() > 100) {
+						outputString = outputString.substring(0, 100) + "...";
+					}
+					System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
+							+ selectMetadata.getColumnTypeName(i) + ")");
+				}));
+				System.out.println();
+			}
 		}
 	}
 
