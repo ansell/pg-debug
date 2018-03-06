@@ -208,7 +208,9 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("geometry", org.postgis.PGgeometry.class);
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
-			sourceSelectStatement.setInt(1, destMaxId);
+			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
+				sourceSelectStatement.setInt(1, destMaxId);
+			}
 			System.out.println("Executing select statement: " + sourceSelectStatement.toString());
 			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
 				System.out.println("Statement executed, checking metadata");
