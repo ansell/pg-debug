@@ -159,8 +159,11 @@ public class PostgresSync {
 
 		String sourceMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/maxQuery");
 		String sourceSelectQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/selectQuery");
+		int selectIdFieldIndex = Integer
+				.parseInt(JSONStreamUtil.queryJSONNodeAsText(query, "/source/selectIdFieldIndex"));
 		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/maxQuery");
 		String destInsertQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/insertQuery");
+		String destUpdateQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/updateQuery");
 		String destUpdateAutoincrementQuery = JSONStreamUtil.queryJSONNodeAsText(query,
 				"/destination/updateAutoincrementQuery");
 
@@ -183,17 +186,19 @@ public class PostgresSync {
 		}
 
 		executeSync(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, destMaxId, destJDBCUrl,
-				destUsername, destPassword, destInsertQuery, debug, "source");
+				destUsername, destPassword, destInsertQuery, selectIdFieldIndex, destUpdateQuery, debug, "source");
 	}
 
 	private static void executeSync(String sourceJDBCUrl, String sourceUsername, String sourcePassword,
 			String sourceSelectQuery, int destMaxId, String destJDBCUrl, String destUsername, String destPassword,
-			String destInsertQuery, boolean debug, String targetName) throws SQLException, RuntimeException {
+			String destInsertQuery, int selectIdFieldIndex, String destUpdateQuery, boolean debug, String targetName)
+			throws SQLException, RuntimeException {
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
 				PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
 				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);
-				PreparedStatement destInsertStatement = sourceConn.prepareStatement(destInsertQuery);) {
+				PreparedStatement destInsertStatement = sourceConn.prepareStatement(destInsertQuery);
+				PreparedStatement destUpdateStatement = sourceConn.prepareStatement(destUpdateQuery);) {
 			// Following examples from:
 			// http://postgis.refractions.net:80/documentation/manual-1.4/ch05.html#id2765827
 			((org.postgresql.PGConnection) sourceConn).addDataType("geometry", org.postgis.PGgeometry.class);
@@ -211,17 +216,25 @@ public class PostgresSync {
 				long startTime = System.currentTimeMillis();
 				int rowCounter = 0;
 				while (selectResults.next()) {
+					rowCounter++;
 					IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
 						String typeName = selectMetadata.getColumnTypeName(i);
 						if ("geometry".equals(typeName)) {
 							PGgeometry geom = (PGgeometry) selectResults.getObject(i);
 							destInsertStatement.setObject(i, geom);
+							destUpdateStatement.setObject(i, geom);
 						} else if ("int4".equals(typeName)) {
 							destInsertStatement.setInt(i, selectResults.getInt(i));
+							destUpdateStatement.setInt(i, selectResults.getInt(i));
+							if (i == selectIdFieldIndex) {
+								destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
+							}
 						} else if ("float8".equals(typeName)) {
 							destInsertStatement.setFloat(i, selectResults.getFloat(i));
+							destUpdateStatement.setFloat(i, selectResults.getFloat(i));
 						} else if ("bool".equals(typeName)) {
 							destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
+							destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
 						} else if ("varchar".equals(typeName)) {
 							String rawString = selectResults.getString(i);
 							if (debug) {
@@ -236,6 +249,10 @@ public class PostgresSync {
 										+ selectMetadata.getColumnTypeName(i) + ")");
 							}
 							destInsertStatement.setString(i, rawString);
+							destUpdateStatement.setString(i, rawString);
+							if (i == selectIdFieldIndex) {
+								destUpdateStatement.setString(selectColumns + 1, rawString);
+							}
 						} else {
 							throw new RuntimeException("Unsupported type: " + typeName + " for column "
 									+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
@@ -244,15 +261,39 @@ public class PostgresSync {
 					if (debug) {
 						System.out.println();
 					}
-					if (rowCounter % 10000 == 0) {
+					if (rowCounter % 1000 == 0) {
 						double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
 						System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
 								secondsSinceStart, rowCounter / secondsSinceStart);
 					}
 					try {
+						if (debug) {
+							System.out.println(
+									"Executing insert query on destination: " + destInsertStatement.toString());
+						}
 						destInsertStatement.execute();
+					} catch (SQLException e) {
+
+						if (debug) {
+							e.printStackTrace();
+							System.err.println(
+									"Found exception inserting line: " + rowCounter + "... trying update instead");
+						}
+
+						try {
+							destUpdateStatement.execute();
+						} catch (SQLException e1) {
+							
+							if (debug) {
+								e1.printStackTrace();
+								System.err.println(
+										"Also found exception updating line: " + rowCounter + "!");
+							}
+
+						}
 					} finally {
 						destInsertStatement.clearParameters();
+						destUpdateStatement.clearParameters();
 					}
 				}
 			}
