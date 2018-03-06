@@ -211,6 +211,7 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
 			if (sourcePagingSize > 0) {
+				System.out.println("Setting fetch page size to " + sourcePagingSize);
 				sourceSelectStatement.setFetchSize(sourcePagingSize);
 			}
 			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
