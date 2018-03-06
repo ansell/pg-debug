@@ -211,9 +211,13 @@ public class PostgresSync {
 			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
 				sourceSelectStatement.setInt(1, destMaxId);
 			}
-			System.out.println("Executing select statement: " + sourceSelectStatement.toString());
+			if (debug) {
+				System.out.println("Executing select statement: " + sourceSelectStatement.toString());
+			}
 			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
-				System.out.println("Statement executed, checking metadata");
+				if (debug) {
+					System.out.println("Statement executed, checking metadata");
+				}
 				ResultSetMetaData selectMetadata = selectResults.getMetaData();
 				int selectColumns = selectMetadata.getColumnCount();
 				if (selectColumns < 1) {
@@ -221,10 +225,14 @@ public class PostgresSync {
 				}
 				long startTime = System.currentTimeMillis();
 				int rowCounter = 0;
-				System.out.println("Iterating over results...");
+				if (debug) {
+					System.out.println("Iterating over results...");
+				}
 				while (selectResults.next()) {
 					rowCounter++;
-					System.out.println("Processing row: " + rowCounter);
+					if (debug) {
+						System.out.println("Processing row: " + rowCounter);
+					}
 					IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
 						String typeName = selectMetadata.getColumnTypeName(i);
 						if ("geometry".equals(typeName)) {
@@ -297,11 +305,11 @@ public class PostgresSync {
 					} finally {
 						destInsertStatement.clearParameters();
 						// destUpdateStatement.clearParameters();
-						// if (rowCounter % 1 == 0) {
-						double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
-						System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
-								secondsSinceStart, rowCounter / secondsSinceStart);
-						// }
+						if (rowCounter % 100 == 0) {
+							double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
+							System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
+									secondsSinceStart, rowCounter / secondsSinceStart);
+						}
 					}
 				}
 			}
