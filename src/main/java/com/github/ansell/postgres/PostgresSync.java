@@ -214,6 +214,7 @@ public class PostgresSync {
 			if (debug) {
 				System.out.println("Executing select statement: " + sourceSelectStatement.toString());
 			}
+			long startTime = System.currentTimeMillis();
 			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
 				if (debug) {
 					System.out.println("Statement executed, checking metadata");
@@ -223,7 +224,6 @@ public class PostgresSync {
 				if (selectColumns < 1) {
 					throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
 				}
-				long startTime = System.currentTimeMillis();
 				int rowCounter = 0;
 				if (debug) {
 					System.out.println("Iterating over results...");
