@@ -75,6 +75,14 @@
 			<artifactId>jopt-simple</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>net.postgis</groupId>
+			<artifactId>postgis-jdbc</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter-api</artifactId>
 			<scope>test</scope>
@@ -150,6 +158,11 @@
 				<groupId>org.postgresql</groupId>
 				<artifactId>postgresql</artifactId>
 				<version>42.2.1</version>
+			</dependency>
+			<dependency>
+				<groupId>net.postgis</groupId>
+				<artifactId>postgis-jdbc</artifactId>
+				<version>2.2.1</version>
 			</dependency>
 			<dependency>
 				<groupId>net.sf.jopt-simple</groupId>
