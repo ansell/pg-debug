@@ -197,8 +197,10 @@ public class PostgresSync {
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
 				PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
 				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);
-				PreparedStatement destInsertStatement = sourceConn.prepareStatement(destInsertQuery);
-				PreparedStatement destUpdateStatement = sourceConn.prepareStatement(destUpdateQuery);) {
+				PreparedStatement destInsertStatement = destConn.prepareStatement(destInsertQuery);
+		// PreparedStatement destUpdateStatement =
+		// destConn.prepareStatement(destUpdateQuery);
+		) {
 			// Following examples from:
 			// http://postgis.refractions.net:80/documentation/manual-1.4/ch05.html#id2765827
 			((org.postgresql.PGConnection) sourceConn).addDataType("geometry", org.postgis.PGgeometry.class);
@@ -217,24 +219,25 @@ public class PostgresSync {
 				int rowCounter = 0;
 				while (selectResults.next()) {
 					rowCounter++;
+					System.out.println("Processing row: " + rowCounter);
 					IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
 						String typeName = selectMetadata.getColumnTypeName(i);
 						if ("geometry".equals(typeName)) {
 							PGgeometry geom = (PGgeometry) selectResults.getObject(i);
 							destInsertStatement.setObject(i, geom);
-							destUpdateStatement.setObject(i, geom);
+							// destUpdateStatement.setObject(i, geom);
 						} else if ("int4".equals(typeName)) {
 							destInsertStatement.setInt(i, selectResults.getInt(i));
-							destUpdateStatement.setInt(i, selectResults.getInt(i));
-							if (i == selectIdFieldIndex) {
-								destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
-							}
+							// destUpdateStatement.setInt(i, selectResults.getInt(i));
+							// if (i == selectIdFieldIndex) {
+							// destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
+							// }
 						} else if ("float8".equals(typeName)) {
 							destInsertStatement.setFloat(i, selectResults.getFloat(i));
-							destUpdateStatement.setFloat(i, selectResults.getFloat(i));
+							// destUpdateStatement.setFloat(i, selectResults.getFloat(i));
 						} else if ("bool".equals(typeName)) {
 							destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
-							destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
+							// destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
 						} else if ("varchar".equals(typeName)) {
 							String rawString = selectResults.getString(i);
 							if (debug) {
@@ -249,10 +252,10 @@ public class PostgresSync {
 										+ selectMetadata.getColumnTypeName(i) + ")");
 							}
 							destInsertStatement.setString(i, rawString);
-							destUpdateStatement.setString(i, rawString);
-							if (i == selectIdFieldIndex) {
-								destUpdateStatement.setString(selectColumns + 1, rawString);
-							}
+							// destUpdateStatement.setString(i, rawString);
+							// if (i == selectIdFieldIndex) {
+							// destUpdateStatement.setString(selectColumns + 1, rawString);
+							// }
 						} else {
 							throw new RuntimeException("Unsupported type: " + typeName + " for column "
 									+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
@@ -260,11 +263,6 @@ public class PostgresSync {
 					}));
 					if (debug) {
 						System.out.println();
-					}
-					if (rowCounter % 1000 == 0) {
-						double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
-						System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
-								secondsSinceStart, rowCounter / secondsSinceStart);
 					}
 					try {
 						if (debug) {
@@ -280,20 +278,25 @@ public class PostgresSync {
 									"Found exception inserting line: " + rowCounter + "... trying update instead");
 						}
 
-						try {
-							destUpdateStatement.execute();
-						} catch (SQLException e1) {
-							
-							if (debug) {
-								e1.printStackTrace();
-								System.err.println(
-										"Also found exception updating line: " + rowCounter + "!");
-							}
-
-						}
+						// try {
+						// destUpdateStatement.execute();
+						// } catch (SQLException e1) {
+						//
+						// if (debug) {
+						// e1.printStackTrace();
+						// System.err.println("Also found exception updating line: " + rowCounter +
+						// "!");
+						// }
+						//
+						// }
 					} finally {
 						destInsertStatement.clearParameters();
-						destUpdateStatement.clearParameters();
+						// destUpdateStatement.clearParameters();
+						// if (rowCounter % 1 == 0) {
+						double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
+						System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
+								secondsSinceStart, rowCounter / secondsSinceStart);
+						// }
 					}
 				}
 			}
