@@ -161,6 +161,7 @@ public class PostgresSync {
 		String sourceSelectQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/selectQuery");
 		int selectIdFieldIndex = Integer
 				.parseInt(JSONStreamUtil.queryJSONNodeAsText(query, "/source/selectIdFieldIndex"));
+		int sourcePagingSize = Integer.parseInt(JSONStreamUtil.queryJSONNodeAsText(query, "/source/pagingSize"));
 		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/maxQuery");
 		String destInsertQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/insertQuery");
 		String destUpdateQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/updateQuery");
@@ -185,14 +186,15 @@ public class PostgresSync {
 					"Need to update auto-increment value on destination from " + destMaxId + " to " + sourceMaxId);
 		}
 
-		executeSync(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, destMaxId, destJDBCUrl,
-				destUsername, destPassword, destInsertQuery, selectIdFieldIndex, destUpdateQuery, debug, "source");
+		executeSync(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, sourcePagingSize, destMaxId,
+				destJDBCUrl, destUsername, destPassword, destInsertQuery, selectIdFieldIndex, destUpdateQuery, debug,
+				"source");
 	}
 
 	private static void executeSync(String sourceJDBCUrl, String sourceUsername, String sourcePassword,
-			String sourceSelectQuery, int destMaxId, String destJDBCUrl, String destUsername, String destPassword,
-			String destInsertQuery, int selectIdFieldIndex, String destUpdateQuery, boolean debug, String targetName)
-			throws SQLException, RuntimeException {
+			String sourceSelectQuery, int sourcePagingSize, int destMaxId, String destJDBCUrl, String destUsername,
+			String destPassword, String destInsertQuery, int selectIdFieldIndex, String destUpdateQuery, boolean debug,
+			String targetName) throws SQLException, RuntimeException {
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
 				PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
@@ -208,6 +210,9 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("geometry", org.postgis.PGgeometry.class);
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
+			if (sourcePagingSize > 0) {
+				sourceSelectStatement.setFetchSize(sourcePagingSize);
+			}
 			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
 				sourceSelectStatement.setInt(1, destMaxId);
 			}
