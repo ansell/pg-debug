@@ -25,6 +25,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
 import org.jooq.lambda.Unchecked;
@@ -198,6 +199,8 @@ public class PostgresSync {
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
 				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);) {
+			// https://jdbc.postgresql.org/documentation/head/query.html#query-with-cursor
+			sourceConn.setAutoCommit(false);
 			if (sourcePagingSize > 0) {
 				System.out.println("Setting fetch page size to " + sourcePagingSize);
 				((org.postgresql.PGConnection) sourceConn).setDefaultFetchSize(sourcePagingSize);
@@ -212,116 +215,155 @@ public class PostgresSync {
 
 			// TODO: Actually page through by adding LIMIT and OFFSET since Postgres (at
 			// least 8.3/8.4) doesn't seem to understand fetch size parameter
-			try (PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
-					PreparedStatement destInsertStatement = destConn.prepareStatement(destInsertQuery);) {
+			int lastRowCount = 1;
+			AtomicLong totalRowCount = new AtomicLong(0);
+			int nextLimit = sourcePagingSize;
+			int nextOffset = 0;
 
-				if (sourcePagingSize > 0) {
-					sourceSelectStatement.setFetchSize(sourcePagingSize);
+			String trimmedOriginalQuery = sourceSelectQuery.trim();
+			// if (trimmedOriginalQuery.endsWith(";")) {
+			// trimmedOriginalQuery = trimmedOriginalQuery.substring(0,
+			// trimmedOriginalQuery.length() - 1);
+			// System.out.println("Trimmed semi-colon to add limit and offset: " +
+			// trimmedOriginalQuery);
+			// }
+
+			long startTime = System.currentTimeMillis();
+
+			// do {
+			// String nextSelectQuery = trimmedOriginalQuery + " LIMIT " + nextLimit + "
+			// OFFSET " + nextOffset + ";";
+			String nextSelectQuery = sourceSelectQuery;
+			lastRowCount = queryPage(nextSelectQuery, sourcePagingSize, destMaxId, destInsertQuery, debug, targetName,
+					sourceConn, destConn, startTime, totalRowCount);
+			// nextOffset += nextLimit;
+			// totalRowCount += lastRowCount;
+
+			// } while (lastRowCount > 0 && sourcePagingSize > 0);
+
+			double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
+			System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", totalRowCount.get(), secondsSinceStart,
+					totalRowCount.get() / secondsSinceStart);
+			System.out.println("Completed syncing for " + targetName + " processed " + totalRowCount.get() + " rows");
+		}
+	}
+
+	public static int queryPage(String sourceSelectQuery, int sourcePagingSize, int destMaxId, String destInsertQuery,
+			boolean debug, String targetName, Connection sourceConn, Connection destConn, long startTime,
+			AtomicLong totalRowCount) throws SQLException, RuntimeException {
+		int rowCounter = 0;
+		try (PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery,
+				ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY, ResultSet.FETCH_FORWARD);
+				PreparedStatement destInsertStatement = destConn.prepareStatement(destInsertQuery);) {
+
+			if (sourcePagingSize > 0) {
+				// https://jdbc.postgresql.org/documentation/head/query.html#query-with-cursor
+				sourceSelectStatement.setFetchSize(sourcePagingSize);
+			}
+			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
+				sourceSelectStatement.setInt(1, destMaxId);
+			}
+			if (debug) {
+				System.out.println("Executing select statement: " + sourceSelectStatement.toString());
+			}
+			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
+				if (debug) {
+					System.out.println("Statement executed, checking metadata");
 				}
-				if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
-					sourceSelectStatement.setInt(1, destMaxId);
+				ResultSetMetaData selectMetadata = selectResults.getMetaData();
+				int selectColumns = selectMetadata.getColumnCount();
+				if (selectColumns < 1) {
+					throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
 				}
 				if (debug) {
-					System.out.println("Executing select statement: " + sourceSelectStatement.toString());
+					System.out.println("Iterating over results...");
 				}
-				long startTime = System.currentTimeMillis();
-				try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
+				while (selectResults.next()) {
+					rowCounter++;
+					totalRowCount.incrementAndGet();
 					if (debug) {
-						System.out.println("Statement executed, checking metadata");
+						System.out.println("Processing row: " + rowCounter);
 					}
-					ResultSetMetaData selectMetadata = selectResults.getMetaData();
-					int selectColumns = selectMetadata.getColumnCount();
-					if (selectColumns < 1) {
-						throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
-					}
-					int rowCounter = 0;
-					if (debug) {
-						System.out.println("Iterating over results...");
-					}
-					while (selectResults.next()) {
-						rowCounter++;
-						if (debug) {
-							System.out.println("Processing row: " + rowCounter);
-						}
-						IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
-							String typeName = selectMetadata.getColumnTypeName(i);
-							if ("geometry".equals(typeName)) {
-								PGgeometry geom = (PGgeometry) selectResults.getObject(i);
-								destInsertStatement.setObject(i, geom);
-								// destUpdateStatement.setObject(i, geom);
-							} else if ("int4".equals(typeName)) {
-								destInsertStatement.setInt(i, selectResults.getInt(i));
-								// destUpdateStatement.setInt(i, selectResults.getInt(i));
-								// if (i == selectIdFieldIndex) {
-								// destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
-								// }
-							} else if ("float8".equals(typeName)) {
-								destInsertStatement.setFloat(i, selectResults.getFloat(i));
-								// destUpdateStatement.setFloat(i, selectResults.getFloat(i));
-							} else if ("bool".equals(typeName)) {
-								destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
-								// destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
-							} else if ("varchar".equals(typeName)) {
-								String rawString = selectResults.getString(i);
-								if (debug) {
-									String outputString = rawString;
-									if (outputString == null) {
-										outputString = "";
-									}
-									if (outputString.length() > 100) {
-										outputString = outputString.substring(0, 100) + "...";
-									}
-									System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
-											+ selectMetadata.getColumnTypeName(i) + ")");
-								}
-								destInsertStatement.setString(i, rawString);
-								// destUpdateStatement.setString(i, rawString);
-								// if (i == selectIdFieldIndex) {
-								// destUpdateStatement.setString(selectColumns + 1, rawString);
-								// }
-							} else {
-								throw new RuntimeException("Unsupported type: " + typeName + " for column "
-										+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
-							}
-						}));
-						if (debug) {
-							System.out.println();
-						}
-						try {
+					IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
+						String typeName = selectMetadata.getColumnTypeName(i);
+						if ("geometry".equals(typeName)) {
+							PGgeometry geom = (PGgeometry) selectResults.getObject(i);
+							destInsertStatement.setObject(i, geom);
+							// destUpdateStatement.setObject(i, geom);
+						} else if ("int4".equals(typeName)) {
+							destInsertStatement.setInt(i, selectResults.getInt(i));
+							// destUpdateStatement.setInt(i, selectResults.getInt(i));
+							// if (i == selectIdFieldIndex) {
+							// destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
+							// }
+						} else if ("float8".equals(typeName)) {
+							destInsertStatement.setFloat(i, selectResults.getFloat(i));
+							// destUpdateStatement.setFloat(i, selectResults.getFloat(i));
+						} else if ("bool".equals(typeName)) {
+							destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
+							// destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
+						} else if ("varchar".equals(typeName)) {
+							String rawString = selectResults.getString(i);
 							if (debug) {
-								System.out.println(
-										"Executing insert query on destination: " + destInsertStatement.toString());
+								String outputString = rawString;
+								if (outputString == null) {
+									outputString = "";
+								}
+								if (outputString.length() > 100) {
+									outputString = outputString.substring(0, 100) + "...";
+								}
+								System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
+										+ selectMetadata.getColumnTypeName(i) + ")");
 							}
-							destInsertStatement.execute();
-						} catch (SQLException e) {
-							e.printStackTrace();
-							System.err.println("Found exception inserting line: " + rowCounter + " "
-									+ destInsertStatement.toString());
-							throw e;
-							// try {
-							// destUpdateStatement.execute();
-							// } catch (SQLException e1) {
-							//
-							// if (debug) {
-							// e1.printStackTrace();
-							// System.err.println("Also found exception updating line: " + rowCounter +
-							// "!");
+							destInsertStatement.setString(i, rawString);
+							// destUpdateStatement.setString(i, rawString);
+							// if (i == selectIdFieldIndex) {
+							// destUpdateStatement.setString(selectColumns + 1, rawString);
 							// }
-							//
-							// }
-						} finally {
-							destInsertStatement.clearParameters();
-							// destUpdateStatement.clearParameters();
-							if (rowCounter % 100 == 0) {
-								double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
-								System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
-										secondsSinceStart, rowCounter / secondsSinceStart);
-							}
+						} else {
+							throw new RuntimeException("Unsupported type: " + typeName + " for column "
+									+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
+						}
+					}));
+					if (debug) {
+						System.out.println();
+					}
+					try {
+						if (debug) {
+							System.out.println(
+									"Executing insert query on destination: " + destInsertStatement.toString());
+						}
+						destInsertStatement.execute();
+					} catch (SQLException e) {
+						e.printStackTrace();
+						System.err.println(
+								"Found exception inserting line: " + rowCounter + " " + destInsertStatement.toString());
+						throw e;
+						// try {
+						// destUpdateStatement.execute();
+						// } catch (SQLException e1) {
+						//
+						// if (debug) {
+						// e1.printStackTrace();
+						// System.err.println("Also found exception updating line: " + rowCounter +
+						// "!");
+						// }
+						//
+						// }
+					} finally {
+						destInsertStatement.clearParameters();
+						// destUpdateStatement.clearParameters();
+
+						if(totalRowCount.get() % 100 == 0) {
+							double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
+							System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", totalRowCount.get(),
+									secondsSinceStart, totalRowCount.get() / secondsSinceStart);
 						}
 					}
 				}
 			}
 		}
+		return rowCounter;
 	}
 
 	/**
