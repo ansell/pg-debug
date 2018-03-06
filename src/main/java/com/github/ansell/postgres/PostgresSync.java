@@ -197,12 +197,12 @@ public class PostgresSync {
 			String targetName) throws SQLException, RuntimeException {
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
-				PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
-				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);
-				PreparedStatement destInsertStatement = destConn.prepareStatement(destInsertQuery);
-		// PreparedStatement destUpdateStatement =
-		// destConn.prepareStatement(destUpdateQuery);
-		) {
+				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);) {
+			if (sourcePagingSize > 0) {
+				System.out.println("Setting fetch page size to " + sourcePagingSize);
+				((org.postgresql.PGConnection) sourceConn).setDefaultFetchSize(sourcePagingSize);
+				((org.postgresql.PGConnection) destConn).setDefaultFetchSize(sourcePagingSize);
+			}
 			// Following examples from:
 			// http://postgis.refractions.net:80/documentation/manual-1.4/ch05.html#id2765827
 			((org.postgresql.PGConnection) sourceConn).addDataType("geometry", org.postgis.PGgeometry.class);
@@ -210,109 +210,111 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("geometry", org.postgis.PGgeometry.class);
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
-			if (sourcePagingSize > 0) {
-				System.out.println("Setting fetch page size to " + sourcePagingSize);
-				sourceSelectStatement.setFetchSize(sourcePagingSize);
-				((org.postgresql.PGConnection) sourceConn).setDefaultFetchSize(sourcePagingSize);
-			}
-			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
-				sourceSelectStatement.setInt(1, destMaxId);
-			}
-			if (debug) {
-				System.out.println("Executing select statement: " + sourceSelectStatement.toString());
-			}
-			long startTime = System.currentTimeMillis();
-			try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
+			try (PreparedStatement sourceSelectStatement = sourceConn.prepareStatement(sourceSelectQuery);
+					PreparedStatement destInsertStatement = destConn.prepareStatement(destInsertQuery);) {
+
+				if (sourcePagingSize > 0) {
+					sourceSelectStatement.setFetchSize(sourcePagingSize);
+				}
+				if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
+					sourceSelectStatement.setInt(1, destMaxId);
+				}
 				if (debug) {
-					System.out.println("Statement executed, checking metadata");
+					System.out.println("Executing select statement: " + sourceSelectStatement.toString());
 				}
-				ResultSetMetaData selectMetadata = selectResults.getMetaData();
-				int selectColumns = selectMetadata.getColumnCount();
-				if (selectColumns < 1) {
-					throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
-				}
-				int rowCounter = 0;
-				if (debug) {
-					System.out.println("Iterating over results...");
-				}
-				while (selectResults.next()) {
-					rowCounter++;
+				long startTime = System.currentTimeMillis();
+				try (ResultSet selectResults = sourceSelectStatement.executeQuery();) {
 					if (debug) {
-						System.out.println("Processing row: " + rowCounter);
+						System.out.println("Statement executed, checking metadata");
 					}
-					IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
-						String typeName = selectMetadata.getColumnTypeName(i);
-						if ("geometry".equals(typeName)) {
-							PGgeometry geom = (PGgeometry) selectResults.getObject(i);
-							destInsertStatement.setObject(i, geom);
-							// destUpdateStatement.setObject(i, geom);
-						} else if ("int4".equals(typeName)) {
-							destInsertStatement.setInt(i, selectResults.getInt(i));
-							// destUpdateStatement.setInt(i, selectResults.getInt(i));
-							// if (i == selectIdFieldIndex) {
-							// destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
-							// }
-						} else if ("float8".equals(typeName)) {
-							destInsertStatement.setFloat(i, selectResults.getFloat(i));
-							// destUpdateStatement.setFloat(i, selectResults.getFloat(i));
-						} else if ("bool".equals(typeName)) {
-							destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
-							// destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
-						} else if ("varchar".equals(typeName)) {
-							String rawString = selectResults.getString(i);
-							if (debug) {
-								String outputString = rawString;
-								if (outputString == null) {
-									outputString = "";
-								}
-								if (outputString.length() > 100) {
-									outputString = outputString.substring(0, 100) + "...";
-								}
-								System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
-										+ selectMetadata.getColumnTypeName(i) + ")");
-							}
-							destInsertStatement.setString(i, rawString);
-							// destUpdateStatement.setString(i, rawString);
-							// if (i == selectIdFieldIndex) {
-							// destUpdateStatement.setString(selectColumns + 1, rawString);
-							// }
-						} else {
-							throw new RuntimeException("Unsupported type: " + typeName + " for column "
-									+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
-						}
-					}));
+					ResultSetMetaData selectMetadata = selectResults.getMetaData();
+					int selectColumns = selectMetadata.getColumnCount();
+					if (selectColumns < 1) {
+						throw new RuntimeException("The select query (" + targetName + ") did not return any columns");
+					}
+					int rowCounter = 0;
 					if (debug) {
-						System.out.println();
+						System.out.println("Iterating over results...");
 					}
-					try {
+					while (selectResults.next()) {
+						rowCounter++;
 						if (debug) {
-							System.out.println(
-									"Executing insert query on destination: " + destInsertStatement.toString());
+							System.out.println("Processing row: " + rowCounter);
 						}
-						destInsertStatement.execute();
-					} catch (SQLException e) {
-						e.printStackTrace();
-						System.err.println(
-								"Found exception inserting line: " + rowCounter + " " + destInsertStatement.toString());
-						throw e;
-						// try {
-						// destUpdateStatement.execute();
-						// } catch (SQLException e1) {
-						//
-						// if (debug) {
-						// e1.printStackTrace();
-						// System.err.println("Also found exception updating line: " + rowCounter +
-						// "!");
-						// }
-						//
-						// }
-					} finally {
-						destInsertStatement.clearParameters();
-						// destUpdateStatement.clearParameters();
-						if (rowCounter % 100 == 0) {
-							double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
-							System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
-									secondsSinceStart, rowCounter / secondsSinceStart);
+						IntStream.range(1, selectColumns + 1).forEachOrdered(Unchecked.intConsumer(i -> {
+							String typeName = selectMetadata.getColumnTypeName(i);
+							if ("geometry".equals(typeName)) {
+								PGgeometry geom = (PGgeometry) selectResults.getObject(i);
+								destInsertStatement.setObject(i, geom);
+								// destUpdateStatement.setObject(i, geom);
+							} else if ("int4".equals(typeName)) {
+								destInsertStatement.setInt(i, selectResults.getInt(i));
+								// destUpdateStatement.setInt(i, selectResults.getInt(i));
+								// if (i == selectIdFieldIndex) {
+								// destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
+								// }
+							} else if ("float8".equals(typeName)) {
+								destInsertStatement.setFloat(i, selectResults.getFloat(i));
+								// destUpdateStatement.setFloat(i, selectResults.getFloat(i));
+							} else if ("bool".equals(typeName)) {
+								destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
+								// destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
+							} else if ("varchar".equals(typeName)) {
+								String rawString = selectResults.getString(i);
+								if (debug) {
+									String outputString = rawString;
+									if (outputString == null) {
+										outputString = "";
+									}
+									if (outputString.length() > 100) {
+										outputString = outputString.substring(0, 100) + "...";
+									}
+									System.out.println(selectMetadata.getColumnName(i) + "=" + outputString + " (as "
+											+ selectMetadata.getColumnTypeName(i) + ")");
+								}
+								destInsertStatement.setString(i, rawString);
+								// destUpdateStatement.setString(i, rawString);
+								// if (i == selectIdFieldIndex) {
+								// destUpdateStatement.setString(selectColumns + 1, rawString);
+								// }
+							} else {
+								throw new RuntimeException("Unsupported type: " + typeName + " for column "
+										+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
+							}
+						}));
+						if (debug) {
+							System.out.println();
+						}
+						try {
+							if (debug) {
+								System.out.println(
+										"Executing insert query on destination: " + destInsertStatement.toString());
+							}
+							destInsertStatement.execute();
+						} catch (SQLException e) {
+							e.printStackTrace();
+							System.err.println("Found exception inserting line: " + rowCounter + " "
+									+ destInsertStatement.toString());
+							throw e;
+							// try {
+							// destUpdateStatement.execute();
+							// } catch (SQLException e1) {
+							//
+							// if (debug) {
+							// e1.printStackTrace();
+							// System.err.println("Also found exception updating line: " + rowCounter +
+							// "!");
+							// }
+							//
+							// }
+						} finally {
+							destInsertStatement.clearParameters();
+							// destUpdateStatement.clearParameters();
+							if (rowCounter % 100 == 0) {
+								double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
+								System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", rowCounter,
+										secondsSinceStart, rowCounter / secondsSinceStart);
+							}
 						}
 					}
 				}
