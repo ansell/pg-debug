@@ -213,6 +213,7 @@ public class PostgresSync {
 			if (sourcePagingSize > 0) {
 				System.out.println("Setting fetch page size to " + sourcePagingSize);
 				sourceSelectStatement.setFetchSize(sourcePagingSize);
+				((org.postgresql.PGConnection) sourceConn).setDefaultFetchSize(sourcePagingSize);
 			}
 			if (sourceSelectStatement.getParameterMetaData().getParameterCount() > 0) {
 				sourceSelectStatement.setInt(1, destMaxId);
