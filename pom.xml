@@ -221,7 +221,7 @@
 							<id>pgsync</id>
 							<jvmSettings>
 								<initialMemorySize>32m</initialMemorySize>
-								<maxMemorySize>4g</maxMemorySize>
+								<maxMemorySize>8g</maxMemorySize>
 								<maxStackSize>256m</maxStackSize>
 							</jvmSettings>
 						</program>
