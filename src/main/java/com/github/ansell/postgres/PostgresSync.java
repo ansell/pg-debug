@@ -157,6 +157,11 @@ public class PostgresSync {
 			throws JsonProcessingException, IOException, NumberFormatException, SQLException, RuntimeException {
 
 		String label = JSONStreamUtil.queryJSONNodeAsText(query, "/label");
+		boolean disabled = Boolean.parseBoolean(JSONStreamUtil.queryJSONNodeAsText(query, "/disabled"));
+		if (disabled) {
+			System.out.println("Task disabled: " + label);
+			return;
+		}
 
 		String sourceMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/maxQuery");
 		String sourceSelectQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/source/selectQuery");
@@ -242,8 +247,8 @@ public class PostgresSync {
 			// } while (lastRowCount > 0 && sourcePagingSize > 0);
 
 			double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
-			System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", totalRowCount.get(), secondsSinceStart,
-					totalRowCount.get() / secondsSinceStart);
+			System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", totalRowCount.get(),
+					secondsSinceStart, totalRowCount.get() / secondsSinceStart);
 			System.out.println("Completed syncing for " + targetName + " processed " + totalRowCount.get() + " rows");
 		}
 	}
@@ -354,10 +359,10 @@ public class PostgresSync {
 						destInsertStatement.clearParameters();
 						// destUpdateStatement.clearParameters();
 
-						if(totalRowCount.get() % 100 == 0) {
+						if (totalRowCount.get() % 100 == 0) {
 							double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
-							System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", totalRowCount.get(),
-									secondsSinceStart, totalRowCount.get() / secondsSinceStart);
+							System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n",
+									totalRowCount.get(), secondsSinceStart, totalRowCount.get() / secondsSinceStart);
 						}
 					}
 				}
