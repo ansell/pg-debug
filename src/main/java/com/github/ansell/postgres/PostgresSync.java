@@ -24,13 +24,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
 import org.jooq.lambda.Unchecked;
 import org.postgis.PGgeometry;
-import org.postgresql.util.PGobject;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -57,59 +55,6 @@ public class PostgresSync {
 
 		final OptionSpec<File> configFileOption = parser.accepts("config").withRequiredArg().ofType(File.class)
 				.required().describedAs("A JSON file containing the queries of this sync operation");
-
-		// final OptionSpec<String> sourceJDBCOption =
-		// parser.accepts("source-jdbc").withRequiredArg().ofType(String.class)
-		// .required().describedAs("The JDBC connection string for the source
-		// database");
-		// final OptionSpec<String> sourceUsernameOption =
-		// parser.accepts("source-username").withRequiredArg()
-		// .ofType(String.class).required().describedAs("The JDBC username for the
-		// source database");
-		// final OptionSpec<String> sourcePasswordOption =
-		// parser.accepts("source-password").withRequiredArg()
-		// .ofType(String.class).required().describedAs("The JDBC password for the
-		// source database");
-		//
-		// final OptionSpec<String> destJDBCOption =
-		// parser.accepts("dest-jdbc").withRequiredArg().ofType(String.class)
-		// .describedAs("The JDBC connection string for the destination database");
-		// final OptionSpec<String> destUsernameOption =
-		// parser.accepts("dest-username").withRequiredArg()
-		// .ofType(String.class).describedAs("The JDBC username for the destination
-		// database");
-		// final OptionSpec<String> destPasswordOption =
-		// parser.accepts("dest-password").withRequiredArg()
-		// .ofType(String.class).describedAs("The JDBC password for the destination
-		// database");
-
-		// final OptionSpec<String> sourceMaxQueryOption =
-		// parser.accepts("source-max-query").withRequiredArg()
-		// .ofType(String.class).required().describedAs(
-		// "The query on the source to determine the maximum value. Must return a single
-		// result with a single column.");
-		// final OptionSpec<String> sourceSelectQueryOption =
-		// parser.accepts("source-select-query").withRequiredArg()
-		// .ofType(String.class).describedAs(
-		// "The query on the source to select rows. Must accept a parameterised value
-		// which will be substituted with the max value from the destination to get
-		// newer records.");
-		//
-		// final OptionSpec<String> destMaxQueryOption =
-		// parser.accepts("dest-max-query").withRequiredArg()
-		// .ofType(String.class).describedAs(
-		// "The query on the destination to determine the maximum value. Must return a
-		// single result with a single column.");
-		// final OptionSpec<String> destInsertQueryOption =
-		// parser.accepts("dest-insert-query").withRequiredArg()
-		// .ofType(String.class).describedAs(
-		// "The query on the destination to insert new values. Must accept the same
-		// number of parameters as were found in the rows from the source and in the
-		// same order.");
-		// final OptionSpec<String> destAutoIncrementQueryOption =
-		// parser.accepts("dest-insert-query").withRequiredArg()
-		// .ofType(String.class).describedAs("The query on the destination to update the
-		// auto-increment counter.");
 
 		OptionSet options = null;
 
@@ -171,8 +116,6 @@ public class PostgresSync {
 		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/maxQuery");
 		String destInsertQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/insertQuery");
 		String destUpdateQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/updateQuery");
-		String destUpdateAutoincrementQuery = JSONStreamUtil.queryJSONNodeAsText(query,
-				"/destination/updateAutoincrementQuery");
 
 		int sourceMaxId = executeMaxQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceMaxQuery, debug,
 				label + " (source)");
@@ -218,33 +161,12 @@ public class PostgresSync {
 			((org.postgresql.PGConnection) destConn).addDataType("geometry", org.postgis.PGgeometry.class);
 			((org.postgresql.PGConnection) destConn).addDataType("box3d", org.postgis.PGbox3d.class);
 
-			// TODO: Actually page through by adding LIMIT and OFFSET since Postgres (at
-			// least 8.3/8.4) doesn't seem to understand fetch size parameter
-			int lastRowCount = 1;
 			AtomicLong totalRowCount = new AtomicLong(0);
-			int nextLimit = sourcePagingSize;
-			int nextOffset = 0;
-
-			String trimmedOriginalQuery = sourceSelectQuery.trim();
-			// if (trimmedOriginalQuery.endsWith(";")) {
-			// trimmedOriginalQuery = trimmedOriginalQuery.substring(0,
-			// trimmedOriginalQuery.length() - 1);
-			// System.out.println("Trimmed semi-colon to add limit and offset: " +
-			// trimmedOriginalQuery);
-			// }
-
 			long startTime = System.currentTimeMillis();
 
-			// do {
-			// String nextSelectQuery = trimmedOriginalQuery + " LIMIT " + nextLimit + "
-			// OFFSET " + nextOffset + ";";
 			String nextSelectQuery = sourceSelectQuery;
-			lastRowCount = queryPage(nextSelectQuery, sourcePagingSize, destMaxId, destInsertQuery, debug, targetName,
-					sourceConn, destConn, startTime, totalRowCount);
-			// nextOffset += nextLimit;
-			// totalRowCount += lastRowCount;
-
-			// } while (lastRowCount > 0 && sourcePagingSize > 0);
+			queryPage(nextSelectQuery, sourcePagingSize, destMaxId, destInsertQuery, debug, targetName, sourceConn,
+					destConn, startTime, totalRowCount);
 
 			double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
 			System.out.printf("%d\tSeconds since start: %f\tRecords per second: %f%n", totalRowCount.get(),
@@ -294,19 +216,12 @@ public class PostgresSync {
 						if ("geometry".equals(typeName)) {
 							PGgeometry geom = (PGgeometry) selectResults.getObject(i);
 							destInsertStatement.setObject(i, geom);
-							// destUpdateStatement.setObject(i, geom);
 						} else if ("int4".equals(typeName)) {
 							destInsertStatement.setInt(i, selectResults.getInt(i));
-							// destUpdateStatement.setInt(i, selectResults.getInt(i));
-							// if (i == selectIdFieldIndex) {
-							// destUpdateStatement.setInt(selectColumns + 1, selectResults.getInt(i));
-							// }
 						} else if ("float8".equals(typeName)) {
 							destInsertStatement.setFloat(i, selectResults.getFloat(i));
-							// destUpdateStatement.setFloat(i, selectResults.getFloat(i));
 						} else if ("bool".equals(typeName)) {
 							destInsertStatement.setBoolean(i, selectResults.getBoolean(i));
-							// destUpdateStatement.setBoolean(i, selectResults.getBoolean(i));
 						} else if ("varchar".equals(typeName)) {
 							String rawString = selectResults.getString(i);
 							if (debug) {
@@ -321,10 +236,6 @@ public class PostgresSync {
 										+ selectMetadata.getColumnTypeName(i) + ")");
 							}
 							destInsertStatement.setString(i, rawString);
-							// destUpdateStatement.setString(i, rawString);
-							// if (i == selectIdFieldIndex) {
-							// destUpdateStatement.setString(selectColumns + 1, rawString);
-							// }
 						} else {
 							throw new RuntimeException("Unsupported type: " + typeName + " for column "
 									+ selectMetadata.getColumnName(i) + " (" + targetName + ")");
@@ -344,20 +255,8 @@ public class PostgresSync {
 						System.err.println(
 								"Found exception inserting line: " + rowCounter + " " + destInsertStatement.toString());
 						throw e;
-						// try {
-						// destUpdateStatement.execute();
-						// } catch (SQLException e1) {
-						//
-						// if (debug) {
-						// e1.printStackTrace();
-						// System.err.println("Also found exception updating line: " + rowCounter +
-						// "!");
-						// }
-						//
-						// }
 					} finally {
 						destInsertStatement.clearParameters();
-						// destUpdateStatement.clearParameters();
 
 						if (totalRowCount.get() % 100 == 0) {
 							double secondsSinceStart = (System.currentTimeMillis() - startTime) / 1000.0d;
