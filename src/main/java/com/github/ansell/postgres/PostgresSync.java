@@ -121,14 +121,18 @@ public class PostgresSync {
 		if (sourceMaxId < 0) {
 			throw new RuntimeException("Failed to find source max id using query: " + sourceMaxId);
 		}
+		System.out.println("Max id (" + label + " (source)) = " + sourceMaxId);
+
 		int destMaxId = executeMaxQuery(destJDBCUrl, destUsername, destPassword, destMaxQuery, debug,
 				label + " (dest)");
 		if (destMaxId < 0) {
 			throw new RuntimeException("Failed to find dest max id using query: " + destMaxId);
 		}
+		System.out.println("Max id (" + label + " (dest)) = " + destMaxId);
 
 		if (destMaxId >= sourceMaxId) {
-			System.out.println("Auto-increment value on destination does not need updating");
+			System.out.println("Auto-increment value on destination does not need updating: dest max id (" + destMaxId
+					+ ") is greater than or equal to source max id (" + sourceMaxId + ")");
 		} else {
 			System.out.println(
 					"Need to update auto-increment value on destination from " + destMaxId + " to " + sourceMaxId);
@@ -254,6 +258,7 @@ public class PostgresSync {
 								"Found exception inserting line: " + rowCounter + " " + destInsertStatement.toString());
 						throw e;
 					} finally {
+						// Clear parameters explicitly as a fail-safe to ensure they are not reused
 						destInsertStatement.clearParameters();
 
 						if (totalRowCount.get() % 100 == 0) {
@@ -303,16 +308,20 @@ public class PostgresSync {
 			if (maxColumns != 1) {
 				throw new RuntimeException("The max query (" + targetName + ") did not return a single column");
 			}
-			while (maxResults.next()) {
-				if (debug) {
-					IntStream.range(1, maxColumns + 1)
-							.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(maxMetadata.getColumnName(i)
-									+ "=" + maxResults.getString(i) + " as " + maxMetadata.getColumnTypeName(i))));
-					System.out.println();
-				}
+			if (!maxResults.next()) {
+				throw new RuntimeException("The max query (" + targetName + ") did not return a result");
+			}
 
-				result = Integer.parseInt(maxResults.getString(1));
-				System.out.println("Max id (" + targetName + ") = " + result);
+			if (debug) {
+				IntStream.range(1, maxColumns + 1)
+						.forEachOrdered(Unchecked.intConsumer(i -> System.out.println(maxMetadata.getColumnName(i) + "="
+								+ maxResults.getString(i) + " as " + maxMetadata.getColumnTypeName(i))));
+				System.out.println();
+			}
+
+			result = Integer.parseInt(maxResults.getString(1));
+			if (maxResults.next()) {
+				throw new RuntimeException("The max query (" + targetName + ") returned multiple results");
 			}
 		}
 		return result;
