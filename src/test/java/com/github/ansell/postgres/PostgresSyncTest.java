@@ -9,6 +9,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import joptsimple.OptionException;
+
 /**
  * Tests for {@link PostgresSync}
  * 
@@ -37,6 +39,15 @@ class PostgresSyncTest {
 	@Test
 	final void testMainHelp() throws Exception {
 		PostgresSync.main("--help");
+	}
+
+	/**
+	 * Test method for
+	 * {@link com.github.ansell.postgres.PostgresSync#main(java.lang.String[])}.
+	 */
+	@Test
+	final void testMainNoArgs() throws Exception {
+		assertThrows(OptionException.class, () -> PostgresSync.main());
 	}
 
 }
