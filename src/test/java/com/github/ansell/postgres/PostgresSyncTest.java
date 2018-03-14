@@ -50,4 +50,13 @@ class PostgresSyncTest {
 		assertThrows(OptionException.class, () -> PostgresSync.main());
 	}
 
+	/**
+	 * Test method for
+	 * {@link com.github.ansell.postgres.PostgresSync#main(java.lang.String[])}.
+	 */
+	@Test
+	final void testMainUnrecognisedArg() throws Exception {
+		assertThrows(OptionException.class, () -> PostgresSync.main("--no-matching-arg"));
+	}
+
 }
