@@ -115,7 +115,6 @@ public class PostgresSync {
 		int sourcePagingSize = Integer.parseInt(JSONStreamUtil.queryJSONNodeAsText(query, "/source/pagingSize"));
 		String destMaxQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/maxQuery");
 		String destInsertQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/insertQuery");
-		String destUpdateQuery = JSONStreamUtil.queryJSONNodeAsText(query, "/destination/updateQuery");
 
 		int sourceMaxId = executeMaxQuery(sourceJDBCUrl, sourceUsername, sourcePassword, sourceMaxQuery, debug,
 				label + " (source)");
@@ -136,14 +135,13 @@ public class PostgresSync {
 		}
 
 		executeSync(sourceJDBCUrl, sourceUsername, sourcePassword, sourceSelectQuery, sourcePagingSize, destMaxId,
-				destJDBCUrl, destUsername, destPassword, destInsertQuery, selectIdFieldIndex, destUpdateQuery, debug,
-				"source");
+				destJDBCUrl, destUsername, destPassword, destInsertQuery, selectIdFieldIndex, debug, "source");
 	}
 
 	private static void executeSync(String sourceJDBCUrl, String sourceUsername, String sourcePassword,
 			String sourceSelectQuery, int sourcePagingSize, int destMaxId, String destJDBCUrl, String destUsername,
-			String destPassword, String destInsertQuery, int selectIdFieldIndex, String destUpdateQuery, boolean debug,
-			String targetName) throws SQLException, RuntimeException {
+			String destPassword, String destInsertQuery, int selectIdFieldIndex, boolean debug, String targetName)
+			throws SQLException, RuntimeException {
 
 		try (Connection sourceConn = DriverManager.getConnection(sourceJDBCUrl, sourceUsername, sourcePassword);
 				Connection destConn = DriverManager.getConnection(destJDBCUrl, destUsername, destPassword);) {
