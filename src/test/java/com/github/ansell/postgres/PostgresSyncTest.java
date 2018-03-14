@@ -5,8 +5,12 @@ package com.github.ansell.postgres;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.airlift.testing.postgresql.TestingPostgreSqlServer;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import joptsimple.OptionException;
@@ -17,6 +21,13 @@ import joptsimple.OptionException;
  * @author Peter Ansell p_ansell@yahoo.com
  */
 class PostgresSyncTest {
+
+	private static TestingPostgreSqlServer server;
+
+	@BeforeAll
+	static void setUpClass() throws Exception {
+		server = new TestingPostgreSqlServer("user", "database");
+	}
 
 	/**
 	 * @throws java.lang.Exception
@@ -30,6 +41,11 @@ class PostgresSyncTest {
 	 */
 	@AfterEach
 	void tearDown() throws Exception {
+	}
+
+	@AfterAll
+	static void tearDownClass() throws Exception {
+		server.close();
 	}
 
 	/**
