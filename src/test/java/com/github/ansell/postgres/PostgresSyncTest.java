@@ -26,7 +26,7 @@ class PostgresSyncTest {
 
 	@BeforeAll
 	static void setUpClass() throws Exception {
-		server = new TestingPostgreSqlServer("user", "database");
+		server = new TestingPostgreSqlServer("testUser", "testDatabase");
 	}
 
 	/**
@@ -45,7 +45,9 @@ class PostgresSyncTest {
 
 	@AfterAll
 	static void tearDownClass() throws Exception {
-		server.close();
+		if(server != null) {
+			server.close();
+		}
 	}
 
 	/**
